@@ -450,7 +450,7 @@ namespace ChibiInstaller
                 {
                     key.SetValue("DisplayName", "Chibi Desktop Pet");
                     key.SetValue("DisplayVersion", "0.8.0-beta");
-                    key.SetValue("Publisher", "xzen");
+                    key.SetValue("Publisher", "standoff2jdm-droid");
                     key.SetValue("DisplayIcon", exePath);
                     key.SetValue("InstallLocation", targetDir);
                     key.SetValue("UninstallString", "\"" + Path.Combine(targetDir, "uninstall.bat") + "\"");
