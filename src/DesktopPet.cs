@@ -1369,7 +1369,7 @@ namespace DesktopPetApp
         private bool enableGravity = true;
         private bool enableSound = true;
         private bool enableAppWatch = true;
-        private bool enableEyeTracking = false; // Default: crisp, beautiful, authentic anime face!
+        private bool enableEyeTracking = true; // Dynamic eye tracking with yellow star pupils
 
         // Affection Level (0 - 100%)
         private int affectionLevel = 25;
@@ -1595,7 +1595,7 @@ namespace DesktopPetApp
 
             // Calculate eye sizes based on 1024x1024 canvas
             pupilW = (70.0 / 1024.0) * petWidth;
-            pupilH = (72.0 / 1024.0) * petHeight;
+            pupilH = (80.0 / 1024.0) * petHeight;
 
             basePupilLeftX = (447.0 / 1024.0) * petWidth - pupilW * 0.5;
             basePupilLeftY = (296.0 / 1024.0) * petHeight - pupilH * 0.5;
@@ -2075,7 +2075,7 @@ namespace DesktopPetApp
             if (GetCursorPos(out cur))
             {
                 // Calculate pet's eyes screen center
-                Point petScreenCenter = this.PointToScreen(new Point(this.Width * 0.5, this.Height - petHeight * 0.60));
+                Point petScreenCenter = this.PointToScreen(new Point(this.Width * 0.5, this.Height - petHeight * 0.70));
 
                 double dx = cur.X - petScreenCenter.X;
                 double dy = cur.Y - petScreenCenter.Y;
@@ -2083,12 +2083,12 @@ namespace DesktopPetApp
                 double dist = Math.Sqrt(dx * dx + dy * dy);
                 if (dist > 1.0)
                 {
-                    double maxOffset = 2.4; // Maximum smooth iris travel in pixels
-                    double factor = Math.Min(maxOffset, dist * 0.008);
+                    double maxOffset = 5.0; // Noticeable, smooth eye tracking within eye socket
+                    double factor = Math.Min(maxOffset, dist * 0.015);
                     double angle = Math.Atan2(dy, dx);
 
                     targetPupilX = Math.Cos(angle) * factor;
-                    targetPupilY = Math.Sin(angle) * (factor * 0.55); // Subtle vertical eye movement
+                    targetPupilY = Math.Sin(angle) * (factor * 0.65); // Natural eye aspect ratio
                 }
                 else
                 {
@@ -2130,7 +2130,7 @@ namespace DesktopPetApp
             double minY = workArea.Top - 85.0;
             double maxY = workArea.Bottom - this.Height + (isSittingDangling ? 65.0 : 6.0);
 
-            if (this.Top < minY)
+            if (this.Top < minY && climbState != ClimbState.ClimbingWall)
             {
                 this.Top = minY;
                 if (velocityY < 0) velocityY = 0;
@@ -2248,6 +2248,29 @@ namespace DesktopPetApp
             try { myHwnd = new WindowInteropHelper(this).Handle; } catch { }
             IntPtr treatHwnd = activeTreat != null ? new WindowInteropHelper(activeTreat).Handle : IntPtr.Zero;
 
+            // Prioritize the actual active foreground window if user is working in it!
+            IntPtr fg = GetForegroundWindow();
+            if (fg != IntPtr.Zero && fg != myHwnd && fg != treatHwnd && IsWindowVisible(fg) && !IsIconic(fg))
+            {
+                RECT fgRect;
+                if (GetVisibleWindowRect(fg, out fgRect))
+                {
+                    int w = fgRect.Right - fgRect.Left;
+                    int h = fgRect.Bottom - fgRect.Top;
+                    if (w > 250 && h > 180 && fgRect.Left > -4000)
+                    {
+                        StringBuilder sb = new StringBuilder(256);
+                        GetWindowText(fg, sb, 256);
+                        string title = sb.ToString();
+                        if (!string.IsNullOrEmpty(title) && title != "Program Manager" && title != "Windows Shell Experience Host" && !title.Contains("DesktopPet"))
+                        {
+                            windowRect = fgRect;
+                            return fg;
+                        }
+                    }
+                }
+            }
+
             double petCenterX = this.Left + this.Width * 0.5;
             double petCenterY = this.Top + this.Height * 0.5;
 
@@ -2351,7 +2374,7 @@ namespace DesktopPetApp
                 }
                 targetWindowRect = rect;
 
-                double targetX = climbOnLeft ? (rect.Left - 205.0) : (rect.Right - 75.0);
+                double targetX = climbOnLeft ? (rect.Left - 198.0) : (rect.Right - 66.0);
                 double dx = targetX - this.Left;
 
                 if (Math.Abs(dx) > 6.0)
@@ -2402,13 +2425,13 @@ namespace DesktopPetApp
                 // Lock horizontal position against the visible window edge
                 if (climbOnLeft)
                 {
-                    this.Left = targetWindowRect.Left - 205.0;
+                    this.Left = targetWindowRect.Left - 198.0;
                     facingDirection = 1.0;
                     scaleTransform.ScaleX = Math.Abs(springScaleX); // Facing right towards window wall
                 }
                 else
                 {
-                    this.Left = targetWindowRect.Right - 75.0;
+                    this.Left = targetWindowRect.Right - 66.0;
                     facingDirection = -1.0;
                     scaleTransform.ScaleX = -Math.Abs(springScaleX); // Facing left towards window wall
                 }
@@ -2433,51 +2456,69 @@ namespace DesktopPetApp
                 targetRot = (climbFrameToggle ? 2.5 : -2.5);
                 springScaleY = 1.0 + Math.Sin(simTime * 12.0) * 0.04;
 
-                // Titlebar height check: when reaching hand reaches window top OR hits screen top
+                // Titlebar height check: when reaching hand reaches window top OR hits screen ceiling
                 var workArea = SystemParameters.WorkArea;
                 double upperHandScreenY = this.Top + 135.0;
-                bool reachedTitlebar = (upperHandScreenY <= targetWindowRect.Top + 20.0) 
-                                    || (this.Top <= workArea.Top + 10.0);
 
-                if (reachedTitlebar)
+                // Check if window is too close to top of screen for a perched pet to fit
+                bool windowNearCeiling = (targetWindowRect.Top < workArea.Top + 140.0);
+                bool reachedWindowTop = (upperHandScreenY <= targetWindowRect.Top + 20.0);
+                bool reachedScreenCeiling = (this.Top <= workArea.Top - 60.0);
+
+                if (reachedWindowTop || reachedScreenCeiling)
                 {
-                    climbState = ClimbState.PerchedOnTitlebar; // Successfully climbed onto window!
-                    perchedTimer = 30.0;
-                    currentStandingHwnd = targetWindowHwnd;
-                    lastStandingHwnd = targetWindowHwnd;
-
-                    // Step onto the titlebar horizontally
-                    if (climbOnLeft)
+                    if (windowNearCeiling)
                     {
-                        this.Left = targetWindowRect.Left + 25.0;
+                        // Window is too close to ceiling! Gracefully jump down instead of getting stuck in ceiling
+                        climbState = ClimbState.JumpingDown;
+                        velocityY = -4.0;
+                        jumpVelocityX = climbOnLeft ? 3.0 : -3.0;
+                        isSittingDangling = false;
+                        currentState = PetState.Idle;
+                        UpdateDisplay();
+                        ShowSpeech("Ого, тут потолок экрана! Прыыыжок вниз! 🪂✨");
+                        PlayNyaSound();
+                        return;
                     }
                     else
                     {
-                        this.Left = Math.Max(targetWindowRect.Left + 10.0, targetWindowRect.Right - this.Width - 25.0);
+                        // Plenty of room above window: perch and sit comfortably!
+                        climbState = ClimbState.PerchedOnTitlebar;
+                        perchedTimer = 30.0;
+                        currentStandingHwnd = targetWindowHwnd;
+                        lastStandingHwnd = targetWindowHwnd;
+
+                        if (climbOnLeft)
+                        {
+                            this.Left = targetWindowRect.Left + 25.0;
+                        }
+                        else
+                        {
+                            this.Left = Math.Max(targetWindowRect.Left + 10.0, targetWindowRect.Right - this.Width - 25.0);
+                        }
+
+                        double sitTop = targetWindowRect.Top - this.Height + 65.0;
+                        double minAllowedTop = workArea.Top - 85.0;
+                        this.Top = Math.Max(minAllowedTop, sitTop);
+
+                        targetRot = 0.0;
+                        facingDirection = 1.0;
+                        scaleTransform.ScaleX = Math.Abs(springScaleX);
+                        isSittingDangling = true; // Sits dangling legs!
+                        currentState = PetState.Idle;
+                        UpdateDisplay(); // Switches to clean sit.png
+
+                        PlayNyaSound();
+                        SpawnParticle("💖", Color.FromRgb(255, 105, 180), this.Width * 0.5, this.Height * 0.45);
+
+                        string[] perchedLines = new string[] {
+                            "Ура, залезла на твоё окошко! Сверху такой классный вид! ✨",
+                            "Сижу прямо на твоём окошке, свесив ножки! (´꒳`)🌸",
+                            "Тут так уютно и высоко! 💖"
+                        };
+                        ShowSpeech(perchedLines[random.Next(perchedLines.Length)]);
+                        return;
                     }
-
-                    // Sit firmly with palms on the titlebar
-                    double sitTop = targetWindowRect.Top - this.Height + 93.0;
-                    double minAllowedTop = workArea.Top - 85.0;
-                    this.Top = Math.Max(minAllowedTop, sitTop);
-
-                    targetRot = 0.0;
-                    facingDirection = 1.0;
-                    scaleTransform.ScaleX = Math.Abs(springScaleX);
-                    isSittingDangling = true; // Sits dangling legs!
-                    currentState = PetState.Idle;
-                    UpdateDisplay(); // Switches to clean sit.png
-
-                    PlayNyaSound();
-                    SpawnParticle("💖", Color.FromRgb(255, 105, 180), this.Width * 0.5, this.Height * 0.45);
-
-                    string[] perchedLines = new string[] {
-                        "Ура, залезла на твоё окошко! Сверху такой классный вид! ✨",
-                        "Сижу прямо на твоём окошке, свесив ножки! (´꒳`)🌸",
-                        "Тут так уютно и высоко! 💖"
-                    };
-                    ShowSpeech(perchedLines[random.Next(perchedLines.Length)]);
-                    return;
                 }
             }
             else if (climbState == ClimbState.PerchedOnTitlebar)
@@ -2488,7 +2529,9 @@ namespace DesktopPetApp
                 if (GetVisibleWindowRect(targetWindowHwnd, out rect) && rect.Left > -5000 && !IsIconic(targetWindowHwnd))
                 {
                     targetWindowRect = rect;
-                    double sitTop = targetWindowRect.Top - this.Height + 93.0;
+                    var workArea = SystemParameters.WorkArea;
+                    double minAllowedTop = workArea.Top - 85.0;
+                    double sitTop = Math.Max(minAllowedTop, targetWindowRect.Top - this.Height + 65.0);
                     this.Top += (sitTop - this.Top) * 0.35;
 
                     if (climbOnLeft)
@@ -3203,8 +3246,8 @@ namespace DesktopPetApp
                 double distToRight = Math.Abs(petCenter - rect.Right);
                 climbOnLeft = distToLeft <= distToRight;
 
-                double leftEdgeX = rect.Left - 205.0;
-                double rightEdgeX = rect.Right - 75.0;
+                double leftEdgeX = rect.Left - 198.0;
+                double rightEdgeX = rect.Right - 66.0;
                 double chosenEdgeX = climbOnLeft ? leftEdgeX : rightEdgeX;
 
                 // If already near the window edge, immediately latch and climb!
