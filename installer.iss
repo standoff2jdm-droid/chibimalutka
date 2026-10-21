@@ -1,6 +1,6 @@
 ; Inno Setup Script for Chibi Desktop Pet
 #define MyAppName "Chibi Desktop Pet"
-#define MyAppVersion "0.8.0-beta"
+#define MyAppVersion "0.8.5-beta"
 #define MyAppPublisher "standoff2jdm-droid"
 #define MyAppExeName "DesktopPet.exe"
 

@@ -36,7 +36,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 2. Push Code and Tags
 Write-Host ""
-Write-Host "[2/3] Pushing code and tag v0.8.0-beta to GitHub..." -ForegroundColor Yellow
+Write-Host "[2/3] Pushing code and tag v0.8.5-beta to GitHub..." -ForegroundColor Yellow
 & $gitExe push -u origin main --tags
 
 if ($LASTEXITCODE -ne 0) {
@@ -47,13 +47,13 @@ if ($LASTEXITCODE -ne 0) {
 
 # 3. Create GitHub Release with Installer
 Write-Host ""
-Write-Host "[3/3] Publishing Release v0.8.0-beta with Installer on GitHub..." -ForegroundColor Yellow
+Write-Host "[3/3] Publishing Release v0.8.5-beta with Installer on GitHub..." -ForegroundColor Yellow
 $setupExe = Join-Path $scriptDir "release_dist\ChibiDesktopPet-Setup.exe"
-$zipPkg = Join-Path $scriptDir "release_dist\ChibiDesktopPet-v0.8.0-beta.zip"
+$zipPkg = Join-Path $scriptDir "release_dist\ChibiDesktopPet-v0.8.5-beta.zip"
 
 if (Test-Path $setupExe) {
-    & $ghExe release create v0.8.0-beta $setupExe $zipPkg --title "Chibi Desktop Pet v0.8.0-beta" --notes "First public beta release of Chibi Desktop Pet with Shimeji physics, window climbing, feeding system, dynamic eye tracking, and auto-updater!" --prerelease
-    Write-Host "GitHub Release v0.8.0-beta created successfully!" -ForegroundColor Green
+    & $ghExe release create v0.8.5-beta $setupExe $zipPkg --title "🌸 Chibi Desktop Pet v0.8.5-beta" --notes-file (Join-Path $scriptDir "RELEASE_NOTES_v0.8.5.md") --prerelease
+    Write-Host "GitHub Release v0.8.5-beta created successfully!" -ForegroundColor Green
 }
 
 Write-Host ""

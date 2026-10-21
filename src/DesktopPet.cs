@@ -425,7 +425,7 @@ namespace DesktopPetApp
 
     public static class UpdateChecker
     {
-        public const string AppVersion = "0.8.0-beta";
+        public const string AppVersion = "0.8.5-beta";
 
         public static void CheckForUpdatesAsync(string repo, Action<UpdateInfo> callback)
         {
@@ -1292,13 +1292,7 @@ namespace DesktopPetApp
         private double targetHoverY = 0.0;
         private double curHoverY = 0.0;
 
-        // Real Eye Tracking variables
-        private double targetPupilX = 0.0;
-        private double targetPupilY = 0.0;
-        private double curPupilX = 0.0;
-        private double curPupilY = 0.0;
-
-        // Native Eye Coordinates inside pet sprite (1024x1120 space mapped to petWidth x petHeight)
+        // Native Eye Coordinates inside pet sprite
         private double basePupilLeftX;
         private double basePupilLeftY;
         private double basePupilRightX;
@@ -1316,6 +1310,15 @@ namespace DesktopPetApp
         // Sprites Bitmaps
         private BitmapSource imgIdleSclera;
         private BitmapSource imgIdle;
+        private BitmapSource imgIdleLookLeft;
+        private BitmapSource imgIdleLookRight;
+        private BitmapSource imgIdleLookUp;
+        private BitmapSource imgIdleLookDown;
+        private BitmapSource imgIdleLookUpLeft;
+        private BitmapSource imgIdleLookUpRight;
+        private BitmapSource imgIdleLookDownLeft;
+        private BitmapSource imgIdleLookDownRight;
+        private BitmapSource currentGazeSprite;
         private BitmapSource imgSit;
         private BitmapSource imgWalk1;
         private BitmapSource imgWalk2;
@@ -1369,7 +1372,7 @@ namespace DesktopPetApp
         private bool enableGravity = true;
         private bool enableSound = true;
         private bool enableAppWatch = true;
-        private bool enableEyeTracking = true; // Dynamic eye tracking with yellow star pupils
+        private bool enableEyeTracking = true; // High-precision dynamic eye tracking enabled by default
 
         // Affection Level (0 - 100%)
         private int affectionLevel = 25;
@@ -1737,6 +1740,15 @@ namespace DesktopPetApp
             // Sprites
             imgIdleSclera = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle_sclera.png"));
             imgIdle = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle.png"));
+            imgIdleLookLeft = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle_look_left.png")) ?? imgIdle;
+            imgIdleLookRight = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle_look_right.png")) ?? imgIdle;
+            imgIdleLookUp = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle_look_up.png")) ?? imgIdle;
+            imgIdleLookDown = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle_look_down.png")) ?? imgIdle;
+            imgIdleLookUpLeft = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle_look_upleft.png")) ?? imgIdle;
+            imgIdleLookUpRight = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle_look_upright.png")) ?? imgIdle;
+            imgIdleLookDownLeft = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle_look_downleft.png")) ?? imgIdle;
+            imgIdleLookDownRight = LoadBitmap(System.IO.Path.Combine(spritesDir, "idle_look_downright.png")) ?? imgIdle;
+            currentGazeSprite = imgIdle;
             imgSit = LoadBitmap(System.IO.Path.Combine(spritesDir, "sit.png")) ?? imgIdle;
             imgWalk1 = LoadBitmap(System.IO.Path.Combine(spritesDir, "walk1.png")) ?? imgIdle;
             imgWalk2 = LoadBitmap(System.IO.Path.Combine(spritesDir, "walk2.png")) ?? imgIdle;
@@ -2057,31 +2069,30 @@ namespace DesktopPetApp
 
         private void UpdateEyeTracking()
         {
-            if (eyeCanvas == null) return;
-
-            if (!enableEyeTracking || currentState != PetState.Idle || isSittingDangling || isWalking || isDragging || climbState != ClimbState.None || imgPupilL == null)
+            if (eyeCanvas != null && eyeCanvas.Visibility != Visibility.Collapsed)
             {
-                if (eyeCanvas.Visibility != Visibility.Collapsed)
+                eyeCanvas.Visibility = Visibility.Collapsed;
+            }
+
+            if (!enableEyeTracking || currentState != PetState.Idle || isSittingDangling || isWalking || isDragging || climbState != ClimbState.None)
+            {
+                if (currentGazeSprite != imgIdle && currentState == PetState.Idle && !isSittingDangling && !isWalking && !isDragging)
                 {
-                    eyeCanvas.Visibility = Visibility.Collapsed;
+                    currentGazeSprite = imgIdle;
+                    petImage.Source = imgIdle;
                 }
                 return;
             }
 
-            // Keep idle frontal stance facing forward so face features & pupils remain canonical
+            // Keep idle frontal stance facing forward so gaze direction matches screen cursor
             facingDirection = 1.0;
             scaleTransform.ScaleX = Math.Abs(springScaleX);
-
-            eyeCanvas.Visibility = Visibility.Visible;
 
             // Get absolute screen cursor position
             POINT cur;
             if (GetCursorPos(out cur))
             {
                 // Calculate pet's eyes screen center:
-                // spriteCanvas is centered horizontally in this window (X offset = (this.Width - petWidth) * 0.5)
-                // and aligned to Bottom (Y offset = this.Height - petHeight)
-                // Eye center in 1024x1024 is at (512, 302.5)
                 double eyeWindowX = (this.Width - petWidth) * 0.5 + (512.0 / 1024.0) * petWidth;
                 double eyeWindowY = (this.Height - petHeight) + (302.5 / 1024.0) * petHeight;
                 Point petScreenCenter = this.PointToScreen(new Point(eyeWindowX, eyeWindowY));
@@ -2090,35 +2101,56 @@ namespace DesktopPetApp
                 double dy = cur.Y - petScreenCenter.Y;
 
                 double dist = Math.Sqrt(dx * dx + dy * dy);
-                if (dist > 2.0)
+                BitmapSource targetGaze = imgIdle;
+
+                // Deadzone: if mouse is within 65px of face, look straight forward at the user
+                if (dist > 65.0)
                 {
-                    double maxOffset = 5.5; // Natural, lively eye travel within eye socket
-                    double factor = Math.Min(maxOffset, dist * 0.020);
-                    double angle = Math.Atan2(dy, dx);
+                    double angle = Math.Atan2(dy, dx) * 180.0 / Math.PI; // -180 to +180
 
-                    // Account for horizontal scale flip (if any)
-                    double signX = Math.Sign(scaleTransform.ScaleX);
-                    if (signX == 0) signX = 1.0;
-
-                    targetPupilX = signX * Math.Cos(angle) * factor;
-                    targetPupilY = Math.Sin(angle) * (factor * 0.70);
+                    if (angle >= -112.5 && angle < -67.5)
+                    {
+                        targetGaze = imgIdleLookUp ?? imgIdle;
+                    }
+                    else if (angle >= -67.5 && angle < -22.5)
+                    {
+                        targetGaze = imgIdleLookUpRight ?? imgIdle;
+                    }
+                    else if (angle >= -22.5 && angle < 22.5)
+                    {
+                        targetGaze = imgIdleLookRight ?? imgIdle;
+                    }
+                    else if (angle >= 22.5 && angle < 67.5)
+                    {
+                        targetGaze = imgIdleLookDownRight ?? imgIdle;
+                    }
+                    else if (angle >= 67.5 && angle < 112.5)
+                    {
+                        targetGaze = imgIdleLookDown ?? imgIdle;
+                    }
+                    else if (angle >= 112.5 && angle < 157.5)
+                    {
+                        targetGaze = imgIdleLookDownLeft ?? imgIdle;
+                    }
+                    else if (angle >= -157.5 && angle < -112.5)
+                    {
+                        targetGaze = imgIdleLookUpLeft ?? imgIdle;
+                    }
+                    else
+                    {
+                        targetGaze = imgIdleLookLeft ?? imgIdle;
+                    }
                 }
-                else
+
+                if (targetGaze != currentGazeSprite)
                 {
-                    targetPupilX = 0;
-                    targetPupilY = 0;
+                    currentGazeSprite = targetGaze;
+                    if (currentState == PetState.Idle && !isSittingDangling && !isWalking && !isDragging)
+                    {
+                        petImage.Source = currentGazeSprite;
+                    }
                 }
             }
-
-            // Smooth spring damping for eye pupils
-            curPupilX += (targetPupilX - curPupilX) * 0.30;
-            curPupilY += (targetPupilY - curPupilY) * 0.30;
-
-            Canvas.SetLeft(pupilLeftImg, basePupilLeftX + curPupilX);
-            Canvas.SetTop(pupilLeftImg, basePupilLeftY + curPupilY);
-
-            Canvas.SetLeft(pupilRightImg, basePupilRightX + curPupilX);
-            Canvas.SetTop(pupilRightImg, basePupilRightY + curPupilY);
         }
 
         private void ClampToScreenBounds()
@@ -2354,8 +2386,8 @@ namespace DesktopPetApp
             IntPtr topWin = FindForemostWindow(out r);
             if (topWin != IntPtr.Zero)
             {
-                // If pet is horizontally within this window's width
-                if (petCenterX >= r.Left - 25 && petCenterX <= r.Right + 25)
+                // Window must have enough ceiling clearance (at least 170px) so pet can sit without hitting screen bounds
+                if (r.Top >= workArea.Top + 170.0 && petCenterX >= r.Left - 25 && petCenterX <= r.Right + 25)
                 {
                     double windowSitTop = r.Top - this.Height + standOffset;
                     double minTop = workArea.Top - 85.0;
@@ -2387,7 +2419,7 @@ namespace DesktopPetApp
                 }
                 targetWindowRect = rect;
 
-                double targetX = climbOnLeft ? (rect.Left - 198.0) : (rect.Right - 94.0);
+                double targetX = climbOnLeft ? (rect.Left - 204.0) : (rect.Right - 76.0);
                 double dx = targetX - this.Left;
 
                 if (Math.Abs(dx) > 6.0)
@@ -2438,13 +2470,13 @@ namespace DesktopPetApp
                 // Lock horizontal position against the visible window edge
                 if (climbOnLeft)
                 {
-                    this.Left = targetWindowRect.Left - 198.0;
+                    this.Left = targetWindowRect.Left - 204.0;
                     facingDirection = 1.0;
                     scaleTransform.ScaleX = Math.Abs(springScaleX); // Facing right towards window wall
                 }
                 else
                 {
-                    this.Left = targetWindowRect.Right - 94.0;
+                    this.Left = targetWindowRect.Right - 76.0;
                     facingDirection = -1.0;
                     scaleTransform.ScaleX = -Math.Abs(springScaleX); // Facing left towards window wall
                 }
@@ -2837,7 +2869,7 @@ namespace DesktopPetApp
                 else if (roll < 8)
                 {
                     // Shimeji Climbing action!
-                    TryClimbNearestWindow();
+                    TryClimbNearestWindow(true);
                 }
                 else if (roll < 10 && imgSleep != null)
                 {
@@ -3129,53 +3161,42 @@ namespace DesktopPetApp
         private void UpdateDisplay()
         {
             BitmapSource target = null;
-            bool showEyes = false;
 
             switch (currentState)
             {
                 case PetState.Blink:
                     target = imgBlink;
-                    showEyes = false;
                     break;
                 case PetState.Happy:
                     target = (isSittingDangling && imgSit != null) ? imgSit : imgHappy;
-                    showEyes = false;
                     break;
                 case PetState.Dragging:
                     target = imgDrag;
-                    showEyes = false;
                     break;
                 case PetState.Console:
                     target = imgConsole;
-                    showEyes = false;
                     break;
                 case PetState.Drawing:
                     target = imgDrawing;
-                    showEyes = false;
                     break;
                 case PetState.Sleep:
                     target = imgSleep;
-                    showEyes = false;
                     break;
                 case PetState.Pout:
                     target = imgPout;
-                    showEyes = false;
                     break;
                 case PetState.Climbing:
                     target = climbFrameToggle ? imgClimb1 : imgClimb2;
-                    showEyes = false;
                     break;
                 case PetState.Idle:
                 default:
                     if (isSittingDangling && imgSit != null)
                     {
                         target = imgSit;
-                        showEyes = false;
                     }
                     else
                     {
-                        target = (enableEyeTracking && imgIdleSclera != null) ? imgIdleSclera : imgIdle;
-                        showEyes = enableEyeTracking;
+                        target = (enableEyeTracking && currentGazeSprite != null) ? currentGazeSprite : imgIdle;
                     }
                     break;
             }
@@ -3183,8 +3204,7 @@ namespace DesktopPetApp
             petImage.Source = target ?? imgIdle;
             if (eyeCanvas != null)
             {
-                bool canShowEyes = enableEyeTracking && showEyes && !isSittingDangling && !isWalking && !isDragging && currentState == PetState.Idle && climbState == ClimbState.None;
-                eyeCanvas.Visibility = canShowEyes ? Visibility.Visible : Visibility.Collapsed;
+                eyeCanvas.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -3258,7 +3278,7 @@ namespace DesktopPetApp
             PlayNyaSound();
         }
 
-        public void TryClimbNearestWindow()
+        public void TryClimbNearestWindow(bool isAuto = false)
         {
             if (climbState != ClimbState.None || isDragging) return;
 
@@ -3266,6 +3286,20 @@ namespace DesktopPetApp
             IntPtr target = FindForemostWindow(out rect);
             if (target != IntPtr.Zero)
             {
+                var workArea = SystemParameters.WorkArea;
+                if (rect.Top < workArea.Top + 170.0)
+                {
+                    if (!isAuto)
+                    {
+                        ShowSpeech("Окошко слишком близко к краю экрана, сверху не помещусь! (´꒳`)🌸");
+                    }
+                    else
+                    {
+                        StartWalking();
+                    }
+                    return;
+                }
+
                 targetWindowHwnd = target;
                 targetWindowRect = rect;
 
@@ -3274,8 +3308,8 @@ namespace DesktopPetApp
                 double distToRight = Math.Abs(petCenter - rect.Right);
                 climbOnLeft = distToLeft <= distToRight;
 
-                double leftEdgeX = rect.Left - 198.0;
-                double rightEdgeX = rect.Right - 94.0;
+                double leftEdgeX = rect.Left - 204.0;
+                double rightEdgeX = rect.Right - 76.0;
                 double chosenEdgeX = climbOnLeft ? leftEdgeX : rightEdgeX;
 
                 // If already near the window edge, immediately latch and climb!
@@ -3299,7 +3333,14 @@ namespace DesktopPetApp
                 return;
             }
 
-            ShowSpeech("Не вижу подходящего окошка рядом~ 🌸");
+            if (!isAuto)
+            {
+                ShowSpeech("Не вижу подходящего окошка рядом~ 🌸");
+            }
+            else
+            {
+                StartWalking();
+            }
         }
 
         public void OpenChatDialog()
@@ -3493,17 +3534,18 @@ namespace DesktopPetApp
             menu.Items.Add(treatMenu);
 
             // Eye tracking toggle
-            var eyeItem = new MenuItem { Header = "👁 Слежение глазками за курсором", IsCheckable = true, IsChecked = enableEyeTracking };
+            var eyeItem = new MenuItem { Header = "👁 Слежение глазками", IsCheckable = true, IsChecked = enableEyeTracking };
             eyeItem.Click += (s, e) =>
             {
                 enableEyeTracking = eyeItem.IsChecked;
+                if (!enableEyeTracking) currentGazeSprite = imgIdle;
                 UpdateDisplay();
             };
             menu.Items.Add(eyeItem);
 
             // Shimeji Climbing action
             var climbItem = new MenuItem { Header = "🧗 Залезть на активное окно" };
-            climbItem.Click += (s, e) => TryClimbNearestWindow();
+            climbItem.Click += (s, e) => TryClimbNearestWindow(false);
             menu.Items.Add(climbItem);
 
             // Jump down to taskbar

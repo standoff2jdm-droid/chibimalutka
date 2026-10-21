@@ -1,6 +1,6 @@
 # 🌸 Chibi Desktop Pet (Чиби-Питомец на Рабочем Столе)
 
-![Version](https://img.shields.io/badge/version-0.8.0--beta-blueviolet.svg)
+![Version](https://img.shields.io/badge/version-0.8.5--beta-blueviolet.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%207%2F8%2F10%2F11-success.svg)
 ![Framework](https://img.shields.io/badge/.NET%20Framework-4.7.1-informational.svg)
 ![License](https://img.shields.io/badge/license-MIT-purple.svg)

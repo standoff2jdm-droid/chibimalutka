@@ -44,7 +44,7 @@ Write-Host "Files staged to $dist" -ForegroundColor Green
 # 3. Create zip
 Write-Host ""
 Write-Host "[3/4] Creating ZIP archive for GitHub Releases..." -ForegroundColor Yellow
-$zip = Join-Path $scriptDir "release_dist\ChibiDesktopPet-v0.8.0-beta.zip"
+$zip = Join-Path $scriptDir "release_dist\ChibiDesktopPet-v0.8.5-beta.zip"
 if (Test-Path $zip) {
     Remove-Item $zip -Force
 }

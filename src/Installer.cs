@@ -75,7 +75,7 @@ namespace ChibiInstaller
             };
             var subTitleBlock = new TextBlock
             {
-                Text = "Версия 0.8.0-beta • Твой милый интерактивный 2D маскот",
+                Text = "Версия 0.8.5-beta • Твой милый интерактивный 2D маскот",
                 FontSize = 12,
                 Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#8E44AD")),
                 Margin = new Thickness(0, 2, 0, 0)
@@ -449,7 +449,7 @@ namespace ChibiInstaller
                 using (var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(keyPath))
                 {
                     key.SetValue("DisplayName", "Chibi Desktop Pet");
-                    key.SetValue("DisplayVersion", "0.8.0-beta");
+                    key.SetValue("DisplayVersion", "0.8.5-beta");
                     key.SetValue("Publisher", "standoff2jdm-droid");
                     key.SetValue("DisplayIcon", exePath);
                     key.SetValue("InstallLocation", targetDir);
