@@ -1594,14 +1594,14 @@ namespace DesktopPetApp
             };
 
             // Calculate eye sizes based on 1024x1024 canvas
-            pupilW = (70.0 / 1024.0) * petWidth;
-            pupilH = (80.0 / 1024.0) * petHeight;
+            pupilW = (58.0 / 1024.0) * petWidth;
+            pupilH = (64.0 / 1024.0) * petHeight;
 
             basePupilLeftX = (447.0 / 1024.0) * petWidth - pupilW * 0.5;
-            basePupilLeftY = (296.0 / 1024.0) * petHeight - pupilH * 0.5;
+            basePupilLeftY = (300.0 / 1024.0) * petHeight - pupilH * 0.5;
 
-            basePupilRightX = (574.0 / 1024.0) * petWidth - pupilW * 0.5;
-            basePupilRightY = (296.0 / 1024.0) * petHeight - pupilH * 0.5;
+            basePupilRightX = (576.0 / 1024.0) * petWidth - pupilW * 0.5;
+            basePupilRightY = (305.0 / 1024.0) * petHeight - pupilH * 0.5;
 
             pupilLeftImg = new Image
             {
@@ -2068,27 +2068,40 @@ namespace DesktopPetApp
                 return;
             }
 
+            // Keep idle frontal stance facing forward so face features & pupils remain canonical
+            facingDirection = 1.0;
+            scaleTransform.ScaleX = Math.Abs(springScaleX);
+
             eyeCanvas.Visibility = Visibility.Visible;
 
             // Get absolute screen cursor position
             POINT cur;
             if (GetCursorPos(out cur))
             {
-                // Calculate pet's eyes screen center
-                Point petScreenCenter = this.PointToScreen(new Point(this.Width * 0.5, this.Height - petHeight * 0.70));
+                // Calculate pet's eyes screen center:
+                // spriteCanvas is centered horizontally in this window (X offset = (this.Width - petWidth) * 0.5)
+                // and aligned to Bottom (Y offset = this.Height - petHeight)
+                // Eye center in 1024x1024 is at (512, 302.5)
+                double eyeWindowX = (this.Width - petWidth) * 0.5 + (512.0 / 1024.0) * petWidth;
+                double eyeWindowY = (this.Height - petHeight) + (302.5 / 1024.0) * petHeight;
+                Point petScreenCenter = this.PointToScreen(new Point(eyeWindowX, eyeWindowY));
 
                 double dx = cur.X - petScreenCenter.X;
                 double dy = cur.Y - petScreenCenter.Y;
 
                 double dist = Math.Sqrt(dx * dx + dy * dy);
-                if (dist > 1.0)
+                if (dist > 2.0)
                 {
-                    double maxOffset = 5.0; // Noticeable, smooth eye tracking within eye socket
-                    double factor = Math.Min(maxOffset, dist * 0.015);
+                    double maxOffset = 5.5; // Natural, lively eye travel within eye socket
+                    double factor = Math.Min(maxOffset, dist * 0.020);
                     double angle = Math.Atan2(dy, dx);
 
-                    targetPupilX = Math.Cos(angle) * factor;
-                    targetPupilY = Math.Sin(angle) * (factor * 0.65); // Natural eye aspect ratio
+                    // Account for horizontal scale flip (if any)
+                    double signX = Math.Sign(scaleTransform.ScaleX);
+                    if (signX == 0) signX = 1.0;
+
+                    targetPupilX = signX * Math.Cos(angle) * factor;
+                    targetPupilY = Math.Sin(angle) * (factor * 0.70);
                 }
                 else
                 {
@@ -2098,8 +2111,8 @@ namespace DesktopPetApp
             }
 
             // Smooth spring damping for eye pupils
-            curPupilX += (targetPupilX - curPupilX) * 0.25;
-            curPupilY += (targetPupilY - curPupilY) * 0.25;
+            curPupilX += (targetPupilX - curPupilX) * 0.30;
+            curPupilY += (targetPupilY - curPupilY) * 0.30;
 
             Canvas.SetLeft(pupilLeftImg, basePupilLeftX + curPupilX);
             Canvas.SetTop(pupilLeftImg, basePupilLeftY + curPupilY);
@@ -2130,7 +2143,7 @@ namespace DesktopPetApp
             double minY = workArea.Top - 85.0;
             double maxY = workArea.Bottom - this.Height + (isSittingDangling ? 65.0 : 6.0);
 
-            if (this.Top < minY && climbState != ClimbState.ClimbingWall)
+            if (this.Top < minY && climbState != ClimbState.ClimbingWall && climbState != ClimbState.PerchedOnTitlebar)
             {
                 this.Top = minY;
                 if (velocityY < 0) velocityY = 0;
@@ -2374,7 +2387,7 @@ namespace DesktopPetApp
                 }
                 targetWindowRect = rect;
 
-                double targetX = climbOnLeft ? (rect.Left - 198.0) : (rect.Right - 66.0);
+                double targetX = climbOnLeft ? (rect.Left - 198.0) : (rect.Right - 94.0);
                 double dx = targetX - this.Left;
 
                 if (Math.Abs(dx) > 6.0)
@@ -2431,7 +2444,7 @@ namespace DesktopPetApp
                 }
                 else
                 {
-                    this.Left = targetWindowRect.Right - 66.0;
+                    this.Left = targetWindowRect.Right - 94.0;
                     facingDirection = -1.0;
                     scaleTransform.ScaleX = -Math.Abs(springScaleX); // Facing left towards window wall
                 }
@@ -2460,8 +2473,8 @@ namespace DesktopPetApp
                 var workArea = SystemParameters.WorkArea;
                 double upperHandScreenY = this.Top + 135.0;
 
-                // Check if window is too close to top of screen for a perched pet to fit
-                bool windowNearCeiling = (targetWindowRect.Top < workArea.Top + 140.0);
+                // Check if window is too close to top of screen for a perched pet to fit without jitter
+                bool windowNearCeiling = (targetWindowRect.Top < workArea.Top + 180.0);
                 bool reachedWindowTop = (upperHandScreenY <= targetWindowRect.Top + 20.0);
                 bool reachedScreenCeiling = (this.Top <= workArea.Top - 60.0);
 
@@ -2476,7 +2489,7 @@ namespace DesktopPetApp
                         isSittingDangling = false;
                         currentState = PetState.Idle;
                         UpdateDisplay();
-                        ShowSpeech("Ого, тут потолок экрана! Прыыыжок вниз! 🪂✨");
+                        ShowSpeech("Добралась до самого верха окошка! Прыыыжок вниз! 🪂✨");
                         PlayNyaSound();
                         return;
                     }
@@ -2530,6 +2543,21 @@ namespace DesktopPetApp
                 {
                     targetWindowRect = rect;
                     var workArea = SystemParameters.WorkArea;
+
+                    // If user moved window up into ceiling, jump down gracefully without fighting screen bounds
+                    if (targetWindowRect.Top < workArea.Top + 160.0)
+                    {
+                        climbState = ClimbState.JumpingDown;
+                        velocityY = -4.0;
+                        jumpVelocityX = climbOnLeft ? 3.0 : -3.0;
+                        isSittingDangling = false;
+                        currentState = PetState.Idle;
+                        UpdateDisplay();
+                        ShowSpeech("Ой, окошко прижалось к потолку! Спрыгиваю вниз! 🪂✨");
+                        PlayNyaSound();
+                        return;
+                    }
+
                     double minAllowedTop = workArea.Top - 85.0;
                     double sitTop = Math.Max(minAllowedTop, targetWindowRect.Top - this.Height + 65.0);
                     this.Top += (sitTop - this.Top) * 0.35;
@@ -3247,7 +3275,7 @@ namespace DesktopPetApp
                 climbOnLeft = distToLeft <= distToRight;
 
                 double leftEdgeX = rect.Left - 198.0;
-                double rightEdgeX = rect.Right - 66.0;
+                double rightEdgeX = rect.Right - 94.0;
                 double chosenEdgeX = climbOnLeft ? leftEdgeX : rightEdgeX;
 
                 // If already near the window edge, immediately latch and climb!
@@ -3620,14 +3648,14 @@ namespace DesktopPetApp
             rotateTransform.CenterY = spriteCanvas.Height * 0.80;
 
             // Recalculate eye positions
-            pupilW = (70.0 / 1024.0) * spriteCanvas.Width;
-            pupilH = (72.0 / 1120.0) * spriteCanvas.Height;
+            pupilW = (58.0 / 1024.0) * spriteCanvas.Width;
+            pupilH = (64.0 / 1024.0) * spriteCanvas.Height;
 
-            basePupilLeftX = (436.0 / 1024.0) * spriteCanvas.Width - pupilW * 0.5;
-            basePupilLeftY = (426.0 / 1120.0) * spriteCanvas.Height - pupilH * 0.5;
+            basePupilLeftX = (447.0 / 1024.0) * spriteCanvas.Width - pupilW * 0.5;
+            basePupilLeftY = (300.0 / 1024.0) * spriteCanvas.Height - pupilH * 0.5;
 
-            basePupilRightX = (585.0 / 1024.0) * spriteCanvas.Width - pupilW * 0.5;
-            basePupilRightY = (425.0 / 1120.0) * spriteCanvas.Height - pupilH * 0.5;
+            basePupilRightX = (576.0 / 1024.0) * spriteCanvas.Width - pupilW * 0.5;
+            basePupilRightY = (305.0 / 1024.0) * spriteCanvas.Height - pupilH * 0.5;
 
             pupilLeftImg.Width = pupilW;
             pupilLeftImg.Height = pupilH;
